@@ -1,0 +1,43 @@
+# Ignore build directories
+zig-cache/
+zig-out/
+zig-cache/**/*
+zig-out/**/*
+
+node_modules
+
+*.dll
+*.obj
+*.lib
+*.pdb
+
+# Ignore compiled binaries
+*.o
+*.a
+*.exe
+*.so
+*.dll
+*.dylib
+*.wasm
+
+# Ignore temporary & backup files
+*.swp
+*.swo
+*.bak
+*.tmp
+*.log
+
+# Ignore IDE and editor files
+.vscode/
+.idea/
+*.iml
+*.sublime-project
+*.sublime-workspace
+
+# Ignore system files (Mac, Linux, Windows)
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Ignore dependency downloads (if using third-party dependencies)
+zigmod_cache/
