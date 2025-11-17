@@ -1,3 +1,6 @@
+// Limitations:
+// Only basic support
+
 const std = @import("std");
 const testing = std.testing;
 
@@ -122,7 +125,7 @@ const Parser = struct {
     fn parseNumber(self: *Self) JsonError!*JsonValue {
         const start = self.pos;
 
-        // Optional '-'
+        // Optional leading '-'
         if (self.peek()) |c| {
             if (c == '-') {
                 self.pos += 1;
@@ -131,39 +134,104 @@ const Parser = struct {
             return JsonError.UnexpectedEnd;
         }
 
-        var has_digit = false;
+        // At least one digit required
+        var c_opt = self.peek() orelse return JsonError.UnexpectedEnd;
+        if (!(c_opt >= '0' and c_opt <= '9')) {
+            return JsonError.InvalidNumber;
+        }
+
+        // Integer part: one or more digits
         while (self.pos < self.input.len) {
             const c = self.input[self.pos];
             if (c >= '0' and c <= '9') {
-                has_digit = true;
                 self.pos += 1;
             } else break;
         }
 
-        if (!has_digit) return JsonError.InvalidNumber;
+        var is_float = false;
+
+        // Optional fractional part: '.' digits+
+        if (self.pos < self.input.len and self.input[self.pos] == '.') {
+            is_float = true;
+            self.pos += 1;
+
+            // Must have at least one digit after '.'
+            c_opt = self.peek() orelse return JsonError.InvalidNumber;
+            if (!(c_opt >= '0' and c_opt <= '9')) {
+                return JsonError.InvalidNumber;
+            }
+
+            while (self.pos < self.input.len) {
+                const c = self.input[self.pos];
+                if (c >= '0' and c <= '9') {
+                    self.pos += 1;
+                } else break;
+            }
+        }
+
+        // Optional exponent: ('e' | 'E') ['+' | '-'] digits+
+        if (self.pos < self.input.len) {
+            const c = self.input[self.pos];
+            if (c == 'e' or c == 'E') {
+                is_float = true;
+                self.pos += 1;
+
+                // Optional sign in exponent
+                if (self.pos < self.input.len) {
+                    const sign_c = self.input[self.pos];
+                    if (sign_c == '+' or sign_c == '-') {
+                        self.pos += 1;
+                    }
+                } else {
+                    return JsonError.UnexpectedEnd;
+                }
+
+                // At least one exponent digit required
+                c_opt = self.peek() orelse return JsonError.InvalidNumber;
+                if (!(c_opt >= '0' and c_opt <= '9')) {
+                    return JsonError.InvalidNumber;
+                }
+
+                while (self.pos < self.input.len) {
+                    const d = self.input[self.pos];
+                    if (d >= '0' and d <= '9') {
+                        self.pos += 1;
+                    } else break;
+                }
+            }
+        }
 
         const slice = self.input[start..self.pos];
 
-        // integer-only parse
-        var sign: i64 = 1;
-        var idx: usize = 0;
+        var value: f64 = 0;
 
-        if (slice[0] == '-') {
-            sign = -1;
-            idx = 1;
+        if (is_float) {
+            // Use std.fmt.parseFloat for full float/exponent handling.
+            value = std.fmt.parseFloat(f64, slice) catch {
+                return JsonError.InvalidNumber;
+            };
+        } else {
+            // Integer-only path (what we had earlier), but stored into f64.
+            var sign: i64 = 1;
+            var idx: usize = 0;
+
+            if (slice[0] == '-') {
+                sign = -1;
+                idx = 1;
+            }
+
+            var acc: i64 = 0;
+            while (idx < slice.len) : (idx += 1) {
+                const d = slice[idx] - '0';
+                acc = acc * 10 + @as(i64, d);
+            }
+
+            const signed_val: i64 = sign * acc;
+            value = @floatFromInt(signed_val);
         }
-
-        var value: i64 = 0;
-        while (idx < slice.len) : (idx += 1) {
-            const d = slice[idx] - '0';
-            value = value * 10 + @as(i64, d);
-        }
-
-        const signed_val = value * sign;
-        const f: f64 = @floatFromInt(signed_val);
 
         const node = try self.allocator.create(JsonValue);
-        node.* = .{ .number = f };
+        node.* = .{ .number = value };
         return node;
     }
 
@@ -351,7 +419,7 @@ pub fn main() !void {
     const json_text =
         \\{
         \\  "name": "Zig",
-        \\  "version": 0,
+        \\  "version": 0.2,
         \\  "is_cool": true,
         \\  "tags": ["systems", "safe", "manual"],
         \\  "misc": { "null_example": null, "nested": {"a": 1,"b": 2} }
@@ -569,4 +637,52 @@ test "parse nested object with array" {
     try testing.expectEqual(@as(usize, 1), meta.len);
     try testing.expectEqualStrings("null_example", meta[0].key);
     try testing.expect(meta[0].value.* == .null);
+}
+
+test "parse simple float 3.14" {
+    var buf: [1024]u8 = undefined;
+    var fba = std.heap.FixedBufferAllocator.init(&buf);
+    const alloc = fba.allocator();
+
+    var parser = Parser.init(alloc, "3.14");
+    const root = try parser.parse();
+
+    try testing.expect(root.* == .number);
+    try testing.expectApproxEqAbs(@as(f64, 3.14), root.number, 1e-9);
+}
+
+test "parse float with leading minus -0.5" {
+    var buf: [1024]u8 = undefined;
+    var fba = std.heap.FixedBufferAllocator.init(&buf);
+    const alloc = fba.allocator();
+
+    var parser = Parser.init(alloc, "-0.5");
+    const root = try parser.parse();
+
+    try testing.expect(root.* == .number);
+    try testing.expectApproxEqAbs(@as(f64, -0.5), root.number, 1e-9);
+}
+
+test "parse number with exponent 1e3" {
+    var buf: [1024]u8 = undefined;
+    var fba = std.heap.FixedBufferAllocator.init(&buf);
+    const alloc = fba.allocator();
+
+    var parser = Parser.init(alloc, "1e3");
+    const root = try parser.parse();
+
+    try testing.expect(root.* == .number);
+    try testing.expectApproxEqAbs(@as(f64, 1000), root.number, 1e-9);
+}
+
+test "parse float with exponent 6.02e23" {
+    var buf: [1024]u8 = undefined;
+    var fba = std.heap.FixedBufferAllocator.init(&buf);
+    const alloc = fba.allocator();
+
+    var parser = Parser.init(alloc, "6.02e23");
+    const root = try parser.parse();
+
+    try testing.expect(root.* == .number);
+    try testing.expect(root.number > 1e23);
 }
