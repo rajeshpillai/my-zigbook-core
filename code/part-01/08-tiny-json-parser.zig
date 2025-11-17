@@ -1,4 +1,5 @@
 const std = @import("std");
+const testing = std.testing;
 
 const JsonError = error{
     UnexpectedEnd,
@@ -353,7 +354,7 @@ pub fn main() !void {
         \\  "version": 0,
         \\  "is_cool": true,
         \\  "tags": ["systems", "safe", "manual"],
-        \\  "misc": { "null_example": null }
+        \\  "misc": { "null_example": null, "nested": {"a": 1,"b": 2} }
         \\}
     ;
 
@@ -376,4 +377,196 @@ pub fn main() !void {
     std.debug.print("Parsed JSON:\n", .{});
     printJson(root, 0);
     std.debug.print("\n", .{});
+}
+
+// TEST CASES
+
+test "parse null" {
+    var buf: [1024]u8 = undefined;
+    var fba = std.heap.FixedBufferAllocator.init(&buf);
+    const alloc = fba.allocator();
+
+    var parser = Parser.init(alloc, "null");
+    const root = try parser.parse();
+    try testing.expect(root.* == .null);
+}
+
+test "parse booleans true/false" {
+    // true
+    {
+        var buf: [1024]u8 = undefined;
+        var fba = std.heap.FixedBufferAllocator.init(&buf);
+        const alloc = fba.allocator();
+
+        var parser = Parser.init(alloc, "true");
+        const root = try parser.parse();
+
+        try testing.expect(root.* == .bool);
+        try testing.expectEqual(@as(bool, true), root.bool);
+    }
+
+    // false
+    {
+        var buf: [1024]u8 = undefined;
+        var fba = std.heap.FixedBufferAllocator.init(&buf);
+        const alloc = fba.allocator();
+
+        var parser = Parser.init(alloc, "false");
+        const root = try parser.parse();
+
+        try testing.expect(root.* == .bool);
+        try testing.expectEqual(@as(bool, false), root.bool);
+    }
+}
+
+test "parse integer number" {
+    var buf: [1024]u8 = undefined;
+    var fba = std.heap.FixedBufferAllocator.init(&buf);
+    const alloc = fba.allocator();
+
+    var parser = Parser.init(alloc, "123");
+    const root = try parser.parse();
+
+    try testing.expect(root.* == .number);
+    try testing.expectEqual(@as(f64, 123), root.number);
+}
+
+test "parse negative number" {
+    var buf: [1024]u8 = undefined;
+    var fba = std.heap.FixedBufferAllocator.init(&buf);
+    const alloc = fba.allocator();
+
+    var parser = Parser.init(alloc, "-42");
+    const root = try parser.parse();
+
+    try testing.expect(root.* == .number);
+    try testing.expectEqual(@as(f64, -42), root.number);
+}
+
+test "parse simple string" {
+    var buf: [1024]u8 = undefined;
+    var fba = std.heap.FixedBufferAllocator.init(&buf);
+    const alloc = fba.allocator();
+
+    var parser = Parser.init(alloc, "\"hello\"");
+    const root = try parser.parse();
+
+    try testing.expect(root.* == .string);
+    try testing.expectEqualStrings("hello", root.string);
+}
+
+test "parse array of numbers" {
+    var buf: [2048]u8 = undefined; // a bit more for arrays
+    var fba = std.heap.FixedBufferAllocator.init(&buf);
+    const alloc = fba.allocator();
+
+    var parser = Parser.init(alloc, "[1, 2, 3]");
+    const root = try parser.parse();
+
+    try testing.expect(root.* == .array);
+
+    const arr = root.array;
+    try testing.expectEqual(@as(usize, 3), arr.len);
+
+    try testing.expect(arr[0].* == .number);
+    try testing.expect(arr[1].* == .number);
+    try testing.expect(arr[2].* == .number);
+
+    try testing.expectEqual(@as(f64, 1), arr[0].number);
+    try testing.expectEqual(@as(f64, 2), arr[1].number);
+    try testing.expectEqual(@as(f64, 3), arr[2].number);
+}
+
+test "parse empty array" {
+    var buf: [1024]u8 = undefined;
+    var fba = std.heap.FixedBufferAllocator.init(&buf);
+    const alloc = fba.allocator();
+
+    var parser = Parser.init(alloc, "[]");
+    const root = try parser.parse();
+
+    try testing.expect(root.* == .array);
+    try testing.expectEqual(@as(usize, 0), root.array.len);
+}
+
+test "parse simple object" {
+    const json =
+        \\{
+        \\  "name": "Zig",
+        \\  "version": 0,
+        \\  "is_cool": true
+        \\}
+    ;
+
+    var buf: [4096]u8 = undefined;
+    var fba = std.heap.FixedBufferAllocator.init(&buf);
+    const alloc = fba.allocator();
+
+    var parser = Parser.init(alloc, json);
+    const root = try parser.parse();
+
+    try testing.expect(root.* == .object);
+
+    const obj = root.object;
+    try testing.expectEqual(@as(usize, 3), obj.len);
+
+    // name
+    try testing.expectEqualStrings("name", obj[0].key);
+    try testing.expect(obj[0].value.* == .string);
+    try testing.expectEqualStrings("Zig", obj[0].value.string);
+
+    // version
+    try testing.expectEqualStrings("version", obj[1].key);
+    try testing.expect(obj[1].value.* == .number);
+    try testing.expectEqual(@as(f64, 0), obj[1].value.number);
+
+    // is_cool
+    try testing.expectEqualStrings("is_cool", obj[2].key);
+    try testing.expect(obj[2].value.* == .bool);
+    try testing.expectEqual(@as(bool, true), obj[2].value.bool);
+}
+
+test "parse nested object with array" {
+    const json =
+        \\{
+        \\  "tags": ["systems", "safe", "manual"],
+        \\  "meta": { "null_example": null }
+        \\}
+    ;
+
+    var buf: [4096]u8 = undefined;
+    var fba = std.heap.FixedBufferAllocator.init(&buf);
+    const alloc = fba.allocator();
+
+    var parser = Parser.init(alloc, json);
+    const root = try parser.parse();
+
+    try testing.expect(root.* == .object);
+
+    const obj = root.object;
+    try testing.expectEqual(@as(usize, 2), obj.len);
+
+    // tags
+    try testing.expectEqualStrings("tags", obj[0].key);
+    try testing.expect(obj[0].value.* == .array);
+
+    const tags = obj[0].value.array;
+    try testing.expectEqual(@as(usize, 3), tags.len);
+
+    try testing.expect(tags[0].* == .string);
+    try testing.expect(tags[1].* == .string);
+    try testing.expect(tags[2].* == .string);
+
+    try testing.expectEqualStrings("systems", tags[0].string);
+    try testing.expectEqualStrings("safe", tags[1].string);
+    try testing.expectEqualStrings("manual", tags[2].string);
+
+    // meta.null_example
+    try testing.expectEqualStrings("meta", obj[1].key);
+    try testing.expect(obj[1].value.* == .object);
+
+    const meta = obj[1].value.object;
+    try testing.expectEqual(@as(usize, 1), meta.len);
+    try testing.expectEqualStrings("null_example", meta[0].key);
+    try testing.expect(meta[0].value.* == .null);
 }
