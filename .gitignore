@@ -1,3 +1,6 @@
+# App temp folders
+output 
+
 # Ignore build directories
 zig-cache/
 zig-out/
