@@ -44,6 +44,8 @@ fn processDirectory(cwd: *std.fs.Dir, allocator: std.mem.Allocator, src_dir: []c
 
 // Process a single markdown file
 fn processFile(cwd: *std.fs.Dir, allocator: std.mem.Allocator, src_dir: []const u8, out_dir: []const u8, file_name: []const u8) !void {
+    std.debug.print("PROCESS {s}\\{s} -> {s}\\{s}\n", .{ src_dir, file_name, out_dir, file_name });
+
     const src_path = try std.fs.path.join(allocator, &[_][]const u8{ src_dir, file_name });
     defer allocator.free(src_path);
 
