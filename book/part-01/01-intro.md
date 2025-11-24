@@ -21,3 +21,11 @@ And…
 So fast that your chai might still be steaming by the time you're holding a cross-compiled Linux binary.
 
 
+Code Injection Test:
+
+```zig file=../../code/part-01/03-hello-zig.zig```
+
+Code Injection Test 2:
+
+```zig file=../../code/part-01/04-type-system.zig```
+
