@@ -1,0 +1,17 @@
+.{
+    .name = .timer_raylib,
+    .version = "0.0.1",
+    .minimum_zig_version = "0.15.2",
+    .fingerprint = 0xdcc46f3eedc108e7,
+    .dependencies = .{
+        .raylib = .{
+            .url = "https://github.com/raysan5/raylib/archive/master.tar.gz",
+            .hash = "1220d1b4dec4b6c15f527212306173fdcb94dbe87843390eaf78b04975b52ff1194e",
+        },
+    },
+    .paths = .{
+        "build.zig",
+        "build.zig.zon",
+        "src",
+    },
+}
